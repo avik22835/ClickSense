@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ClickSense</title>
+    <link rel="stylesheet" href="side_panel.css">
+</head>
+<body class="panel-body">
+
+<!-- Header -->
+<div class="header">
+    <div class="logo">C</div>
+    <h1 class="title">ClickSense</h1>
+    <span class="subtitle">AI Guidance</span>
+</div>
+
+<!-- Goal input -->
+<div class="card">
+    <label for="task-spec" class="label">What do you want to do?</label>
+    <textarea id="task-spec" class="textarea"
+              placeholder="e.g. Create a new S3 bucket named my-bucket in us-east-1"></textarea>
+    <div class="btn-row">
+        <button id="start-agent" class="btn btn-primary">Start Guidance</button>
+        <button id="end-task" disabled class="btn btn-secondary">Stop</button>
+    </div>
+</div>
+
+<!-- Current step card -->
+<div id="step-card" class="card step-card hidden">
+    <div class="step-header">
+        <span id="step-badge" class="badge">Step 1</span>
+        <span class="step-label">Next action</span>
+        <div id="thinking-dot" class="thinking-dot hidden"></div>
+    </div>
+    <div id="step-action-type" class="action-type"></div>
+    <div id="step-instruction" class="instruction"></div>
+    <div id="step-element" class="element-tag hidden"></div>
+    <div class="btn-row">
+        <button id="done-button" class="btn btn-success">I did it ✓</button>
+        <button id="skip-button" class="btn btn-ghost">Skip</button>
+    </div>
+</div>
+
+<!-- Chat -->
+<div id="chat-section" class="card chat-card hidden">
+    <label class="label-small">Message the AI</label>
+    <div class="chat-row">
+        <textarea id="chat-input" class="textarea-small" rows="2"
+                  placeholder="Ask a question, change direction, or give feedback..."></textarea>
+        <button id="chat-send" class="btn btn-primary btn-small">Send</button>
+    </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar">
+    <div id="status-dot" class="status-dot"></div>
+    <span id="agent-status">Ready — enter a goal above to start</span>
+</div>
+
+<!-- History -->
+<div class="card">
+    <div class="history-header">
+        <span class="label">Steps completed</span>
+        <span id="step-count" class="step-count">0 steps</span>
+    </div>
+    <ol id="history" class="history-list"></ol>
+    <div id="history-empty" class="history-empty">No steps completed yet</div>
+</div>
+
+<!-- Debug panel -->
+<details id="debug-panel" class="card debug-card">
+    <summary>Debug Info</summary>
+    <div class="debug-grid">
+        <span class="debug-key">Action</span>       <span id="dbg-action" class="debug-val">—</span>
+        <span class="debug-key">Element #</span>    <span id="dbg-el-idx" class="debug-val">—</span>
+        <span class="debug-key">Tag</span>          <span id="dbg-el-tag" class="debug-val">—</span>
+        <span class="debug-key">Screenshot</span>   <span id="dbg-shot" class="debug-val">—</span>
+        <span class="debug-key">Total elements</span>  <span id="dbg-els" class="debug-val">—</span>
+        <span class="debug-key">Scrollable containers</span> <span id="dbg-ctrs" class="debug-val">—</span>
+    </div>
+    <div class="debug-key" style="margin-top:8px">AI Planning Output</div>
+    <div id="dbg-planning" class="debug-planning">—</div>
+</details>
+
+<!-- Backend settings -->
+<details class="card settings-panel">
+    <summary>Backend Settings</summary>
+    <div class="settings-content">
+        <label class="label-tiny">Backend URL</label>
+        <div class="settings-row">
+            <input id="backend-url" type="text" class="input-tiny" placeholder="http://localhost:8000">
+            <button id="btn-save-settings" class="btn-tiny">Save</button>
+        </div>
+    </div>
+</details>
+
+<script src="side_panel.js"></script>
+</body>
+</html>

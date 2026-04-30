@@ -1,0 +1,353 @@
+/* ClickSense Side Panel — plain CSS (no Tailwind) */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+.panel-body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  color: #1e1b4b;
+  background: #f5f3ff;
+  min-height: 100vh;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Header ────────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px;
+}
+.logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #3730a3;
+}
+.subtitle {
+  font-size: 11px;
+  color: #7c3aed;
+  margin-left: auto;
+  background: #ede9fe;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+/* ── Card ──────────────────────────────────────────────────────────────────── */
+.card {
+  background: #fff;
+  border: 1px solid #e0e7ff;
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ── Labels ────────────────────────────────────────────────────────────────── */
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4338ca;
+}
+.label-small {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6366f1;
+}
+.label-tiny {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Textareas & inputs ────────────────────────────────────────────────────── */
+.textarea {
+  width: 100%;
+  min-height: 68px;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 7px;
+  padding: 8px;
+  font-size: 12px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.textarea:focus { border-color: #6366f1; }
+.textarea:disabled { background: #f9fafb; color: #9ca3af; }
+
+.textarea-small {
+  flex: 1;
+  min-height: 42px;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-size: 12px;
+  resize: none;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.textarea-small:focus { border-color: #6366f1; }
+
+.input-tiny {
+  flex: 1;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  padding: 4px 7px;
+  font-size: 11px;
+  outline: none;
+}
+.input-tiny:focus { border-color: #6366f1; }
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.btn {
+  border: none;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  flex: 1;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:not(:disabled):active { transform: scale(0.97); }
+
+.btn-primary  { background: #6366f1; color: #fff; }
+.btn-primary:not(:disabled):hover  { background: #4f46e5; }
+
+.btn-secondary { background: #e0e7ff; color: #3730a3; }
+.btn-secondary:not(:disabled):hover { background: #c7d2fe; }
+
+.btn-success  { background: #22c55e; color: #fff; }
+.btn-success:not(:disabled):hover  { background: #16a34a; }
+
+.btn-ghost    { background: transparent; color: #6b7280; border: 1px solid #d1d5db; }
+.btn-ghost:not(:disabled):hover { background: #f3f4f6; }
+
+.btn-small    { flex: none; padding: 6px 12px; font-size: 11px; border-radius: 6px; }
+
+.btn-tiny {
+  border: none;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: #6366f1;
+  color: #fff;
+}
+.btn-tiny:hover { background: #4f46e5; }
+
+/* ── Step card ─────────────────────────────────────────────────────────────── */
+.step-card { border-color: #c7d2fe; }
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge {
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.step-label {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.thinking-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6366f1;
+  margin-left: auto;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.7); }
+}
+
+.action-type {
+  font-size: 10px;
+  font-weight: 700;
+  color: #7c3aed;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.instruction {
+  font-size: 12px;
+  line-height: 1.55;
+  color: #1e1b4b;
+  white-space: pre-wrap;
+}
+.element-tag {
+  font-size: 10px;
+  font-family: 'Menlo', 'Consolas', monospace;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 5px;
+  padding: 4px 8px;
+  color: #166534;
+  word-break: break-all;
+}
+
+/* ── Chat ──────────────────────────────────────────────────────────────────── */
+.chat-card { gap: 6px; }
+.chat-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+
+/* ── Status bar ────────────────────────────────────────────────────────────── */
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #9ca3af;
+}
+.status-dot.dot-gray   { background: #9ca3af; }
+.status-dot.dot-indigo { background: #6366f1; animation: pulse-dot 1.5s ease-in-out infinite; }
+.status-dot.dot-green  { background: #22c55e; }
+.status-dot.dot-red    { background: #ef4444; }
+.status-dot.dot-yellow { background: #f59e0b; }
+
+/* ── History ───────────────────────────────────────────────────────────────── */
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.step-count {
+  font-size: 11px;
+  color: #6366f1;
+  font-weight: 600;
+}
+.history-list {
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.history-list li {
+  font-size: 11px;
+  line-height: 1.4;
+  color: #374151;
+  border: 1px dotted #a5b4fc;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.history-empty {
+  font-size: 11px;
+  color: #9ca3af;
+  text-align: center;
+  padding: 6px 0;
+}
+
+/* ── Settings panel ────────────────────────────────────────────────────────── */
+.settings-panel summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  list-style: none;
+}
+.settings-panel summary::-webkit-details-marker { display: none; }
+.settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.settings-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* ── Debug panel ───────────────────────────────────────────────────────────── */
+.debug-card summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  list-style: none;
+}
+.debug-card summary::-webkit-details-marker { display: none; }
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 10px;
+  margin-top: 8px;
+  align-items: start;
+}
+.debug-key {
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+  padding-top: 1px;
+}
+.debug-val {
+  font-size: 10px;
+  font-family: 'Menlo', 'Consolas', monospace;
+  color: #1e1b4b;
+  word-break: break-all;
+}
+.debug-planning {
+  font-size: 10px;
+  font-family: 'Menlo', 'Consolas', monospace;
+  color: #374151;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+  padding: 6px 8px;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ── Utility ───────────────────────────────────────────────────────────────── */
+.hidden { display: none !important; }
