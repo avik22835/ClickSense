@@ -1,4 +1,5 @@
 import base64
+import time
 from google import genai
 from google.genai import types
 
@@ -10,9 +11,15 @@ from prompts import (
     build_planning_prompt, build_grounding_prompt, format_choices, get_index_from_option_name,
     fuzzy_match_option,
 )
+from cache_service import SemanticCache
+from stats_db import init_stats_db, log_request
 
 MODEL = "gemini-2.5-flash"
 VALID_ACTIONS = {"CLICK", "TYPE", "SELECT", "PRESS_ENTER", "SCROLL_UP", "SCROLL_DOWN", "HOVER", "TERMINATE", "NONE"}
+
+# Initialize cache service
+cache = SemanticCache()
+stats_db = init_stats_db("stats.db")
 
 BROWSER_ACTION_DECL = types.FunctionDeclaration(
     name="browser_action",
@@ -68,10 +75,54 @@ def _image_part(data_url: str) -> types.Part:
 
 
 def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
+    start_time = time.time()
+    cache_lookup_start = time.time()
+
+    # Convert elements to dict format for cache service
+    elements_dict = [
+        {
+            'tagName': e.tagName,
+            'description': e.description,
+            'centerCoords': e.centerCoords,
+            'width': e.width,
+            'height': e.height
+        }
+        for e in request.elements
+    ]
+
+    # Try cache first
+    cached = cache.get(
+        goal=request.task,
+        elements=elements_dict,
+        screenshot=request.screenshot
+    )
+
+    cache_lookup_time = (time.time() - cache_lookup_start) * 1000
+
+    if cached:
+        # Cache hit - return cached response
+        response_time = (time.time() - start_time) * 1000
+
+        # Log stats for cache hit
+        log_request(
+            db_conn=stats_db,
+            goal=request.task,
+            cache_hit=True,
+            response_time_ms=response_time,
+            cache_lookup_time_ms=cache_lookup_time,
+            action=cached.get('action'),
+            element_count=len(request.elements),
+            screenshot_size_kb=len(request.screenshot) * 0.75 / 1024
+        )
+
+        return ActionResponse(**cached)
+
+    # Cache miss - run Gemini pipeline
     client = genai.Client(api_key=api_key)
     img = _image_part(request.screenshot)
 
     # ── Step 1: Planning (free-form text, no tool use) ────────────────────────
+    planning_start = time.time()
     planning_prompt = build_planning_prompt(
         request.task, request.history, request.user_message,
         request.rejection_info, request.viewport,
@@ -100,7 +151,10 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
                 planning_output = part.text
                 break
 
+    planning_time = (time.time() - planning_start) * 1000
+
     # ── Step 2: Grounding (force browser_action tool call) ────────────────────
+    grounding_start = time.time()
     if ELEMENTLESS_GROUNDING_TRIGGER in planning_output:
         grounding_prompt_text = ELEMENTLESS_ACTION_PROMPT
     else:
@@ -139,7 +193,25 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
                 args = dict(part.function_call.args)
                 break
 
+    grounding_time = (time.time() - grounding_start) * 1000
+
     if not args:
+        response_time = (time.time() - start_time) * 1000
+
+        # Log stats for error
+        log_request(
+            db_conn=stats_db,
+            goal=request.task,
+            cache_hit=False,
+            response_time_ms=response_time,
+            planning_time_ms=planning_time,
+            grounding_time_ms=grounding_time,
+            cache_lookup_time_ms=cache_lookup_time,
+            element_count=len(request.elements),
+            screenshot_size_kb=len(request.screenshot) * 0.75 / 1024,
+            error="AI did not return valid action"
+        )
+
         return ActionResponse(
             action="NONE",
             explanation="AI did not return a valid action. Please try again.",
@@ -209,7 +281,23 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
                     is_noop = True
                     noop_reason = "AI_SELECTED_NONSENSICAL_SCROLL"
 
+    response_time = (time.time() - start_time) * 1000
+
     if is_noop:
+        # Log stats for noop
+        log_request(
+            db_conn=stats_db,
+            goal=request.task,
+            cache_hit=False,
+            response_time_ms=response_time,
+            planning_time_ms=planning_time,
+            grounding_time_ms=grounding_time,
+            cache_lookup_time_ms=cache_lookup_time,
+            element_count=len(request.elements),
+            screenshot_size_kb=len(request.screenshot) * 0.75 / 1024,
+            error=f"NOOP: {noop_reason}"
+        )
+
         return ActionResponse(
             action=action,
             element_index=element_index,
@@ -221,14 +309,36 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
             noop_reason=noop_reason,
         )
 
-    # Step 3 (safety monitoring) omitted — guidance mode means the human is always
-    # the final approver before any action executes, so a second AI safety call adds
-    # latency with no benefit.
-    return ActionResponse(
-        action=action,
-        element_index=element_index,
-        value=value,
-        explanation=explanation,
-        planning_output=planning_output,
-        severity="SAFE",
+    # Build response dict
+    response_dict = {
+        "action": action,
+        "element_index": element_index,
+        "value": value,
+        "explanation": explanation,
+        "planning_output": planning_output,
+        "severity": "SAFE"
+    }
+
+    # Store in cache
+    cache.set(
+        goal=request.task,
+        elements=elements_dict,
+        screenshot=request.screenshot,
+        response=response_dict
     )
+
+    # Log stats for successful request
+    log_request(
+        db_conn=stats_db,
+        goal=request.task,
+        cache_hit=False,
+        response_time_ms=response_time,
+        planning_time_ms=planning_time,
+        grounding_time_ms=grounding_time,
+        cache_lookup_time_ms=cache_lookup_time,
+        action=action,
+        element_count=len(request.elements),
+        screenshot_size_kb=len(request.screenshot) * 0.75 / 1024
+    )
+
+    return ActionResponse(**response_dict)

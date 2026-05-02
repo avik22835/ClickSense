@@ -5,3 +5,7 @@ google-genai
 pydantic
 thefuzz
 python-Levenshtein
+redis[hiredis]
+sentence-transformers
+Pillow
+imagehash
