@@ -1,6 +1,7 @@
 import hashlib
 import json
 import time
+import os
 from typing import Optional, List, Dict, Any
 from PIL import Image
 import imagehash
@@ -18,7 +19,9 @@ class SemanticCache:
     3. Screenshot dhash (visual layout check)
     """
 
-    def __init__(self, redis_url: str = "redis://localhost:6379"):
+    def __init__(self, redis_url: str = None):
+        if redis_url is None:
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         self.redis = redis.from_url(redis_url, decode_responses=True)
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
