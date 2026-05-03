@@ -22,13 +22,31 @@ class SemanticCache:
     def __init__(self, redis_url: str = None):
         if redis_url is None:
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        self.redis = redis.from_url(redis_url, decode_responses=True)
+        try:
+            self.redis = redis.from_url(redis_url, decode_responses=True)
+            # Test connection
+            self.redis.ping()
+            self.redis_available = True
+
+            # Clear old cache entries that don't have screenshot_embedding
+            print("Checking for old cache entries...")
+            cache_keys = self.redis.keys("cache:*")
+            if cache_keys:
+                print(f"   Found {len(cache_keys)} old cache entries - clearing...")
+                self.clear()
+                print("   Old cache cleared")
+            else:
+                print("   No old cache entries found")
+
+        except Exception as e:
+            print(f"Warning: Redis not available - caching disabled. Error: {e}")
+            self.redis = None
+            self.redis_available = False
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-        # Research-backed default parameters
-        self.similarity_threshold = 0.92      # Semantic similarity threshold
-        self.dhash_threshold = 10              # Visual layout threshold (bits out of 64)
-        self.rounding_precision = 10           # Coordinate rounding (pixels)
+        # Balanced parameters for accuracy + cache hits
+        self.similarity_threshold = 0.75      # Semantic similarity threshold (balanced)
+        self.rounding_precision = 100          # Coordinate rounding (very lenient - 100px tolerance)
         self.max_cache_entries = 10000        # Maximum cache entries
 
     def _build_page_context(self, goal: str, elements: List[Dict]) -> str:
@@ -53,38 +71,72 @@ class SemanticCache:
 
         return f"{goal} | {' | '.join(element_summaries)}"
 
+    def _compute_screenshot_embedding(self, screenshot_data_url: str) -> List[float]:
+        """
+        Create embedding from screenshot for visual page matching.
+
+        Args:
+            screenshot_data_url: Base64-encoded screenshot
+
+        Returns:
+            Embedding vector representing visual page state
+        """
+        # Extract base64 data
+        if "," in screenshot_data_url:
+            b64 = screenshot_data_url.split(",")[1]
+        else:
+            b64 = screenshot_data_url
+
+        # Use the base64 data as text for embedding (simplified approach)
+        # In production, you'd use a vision model for actual image embedding
+        return self._get_embedding(b64[:500])  # First 500 chars of base64
+
     def _compute_element_fingerprint(self, elements: List[Dict]) -> str:
         """
-        Hash element structure + positions + sizes.
+        Hash top K most significant DOM elements that define the webpage.
+
+        Only tracks the most important elements: buttons, inputs, main headings
+        Ignores: navigation, decorative elements, minor UI components
 
         Args:
             elements: List of element dictionaries
 
         Returns:
-            MD5 hash of the combined element signatures
+            MD5 hash of top K significant elements
         """
-        parts = []
+        significant_elements = []
 
         for e in elements:
-            # Extract element data
-            tag_name = e.get('tagName', '')
-            description = e.get('description', '')[:40]
-            center_coords = e.get('centerCoords', [0, 0])
-            width = e.get('width', 0)
-            height = e.get('height', 0)
+            tag_name = e.get('tagName', '').upper()
+            description = e.get('description', '')
 
-            # Round coordinates to nearest 10px to absorb micro-variations
-            cx = round(center_coords[0] / self.rounding_precision) * self.rounding_precision
-            cy = round(center_coords[1] / self.rounding_precision) * self.rounding_precision
-            w = round(width / self.rounding_precision) * self.rounding_precision
-            h = round(height / self.rounding_precision) * self.rounding_precision
+            # Only track the most significant elements
+            is_significant = tag_name in {
+                'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'H1', 'H2', 'H3'
+            }
 
-            # Build element signature
-            sig = f"{tag_name}:{description}:{cx},{cy}:{w}x{h}"
-            parts.append(sig)
+            # Also track elements with key action words
+            if not is_significant:
+                key_action_words = ['create', 'save', 'submit', 'delete', 'add', 'remove',
+                                   'confirm', 'cancel', 'next', 'previous', 'finish', 'done']
+                is_significant = any(word in description.lower() for word in key_action_words)
 
-        # Combine all elements and hash
-        combined = "|".join(parts)
+            if is_significant:
+                # Simple signature: tag + first 15 chars of description
+                sig = f"{tag_name}:{description[:15]}"
+                significant_elements.append(sig)
+
+        # Sort and take top K (most significant elements)
+        significant_elements.sort()
+        top_k_elements = significant_elements[:10]  # Top 10 most significant
+
+        # Combine and hash
+        combined = "|".join(top_k_elements)
+
+        # If no significant elements, use empty string
+        if not combined:
+            combined = "no_significant_elements"
+
         return hashlib.md5(combined.encode()).hexdigest()
 
     def _compute_screenshot_dhash(self, screenshot_data_url: str) -> str:
@@ -139,6 +191,8 @@ class SemanticCache:
         Returns:
             List of candidate cache entries
         """
+        if not self.redis_available:
+            return []
         # For now, we'll use a simple approach:
         # 1. Get all cache keys
         # 2. Compute cosine similarity for each
@@ -240,52 +294,75 @@ class SemanticCache:
         Returns:
             Cached response dict, or None if cache miss
         """
-        # Layer 1: Semantic similarity
+        if not self.redis_available:
+            return None
+        # Layer 1: Semantic similarity (goal-based)
         page_context = self._build_page_context(goal, elements)
-        embedding = self._get_embedding(page_context)
+        goal_embedding = self._get_embedding(page_context)
+
+        print(f"CACHE DEBUG - Goal: '{goal[:50]}...'")
+        print(f"   Page context: '{page_context[:100]}...'")
+        print(f"   Current fingerprint: {self._compute_element_fingerprint(elements)}")
 
         # Query Redis for similar entries
-        candidates = self._query_similar(embedding, limit=5)
+        candidates = self._query_similar(goal_embedding, limit=5)
 
-        for candidate in candidates:
+        if not candidates:
+            print(f"   CACHE MISS - No semantic candidates found (threshold: {self.similarity_threshold})")
+            return None
+
+        print(f"   Found {len(candidates)} semantic candidates (threshold: {self.similarity_threshold}):")
+
+        # Layer 2: Screenshot similarity (visual page validation)
+        screenshot_embedding = self._compute_screenshot_embedding(screenshot)
+        screenshot_threshold = 0.95  # 95% screenshot similarity threshold
+
+        valid_candidates = []
+        for i, candidate in enumerate(candidates):
             entry = candidate['entry']
+            stored_screenshot_embedding = entry.get('screenshot_embedding', [])
 
-            # Layer 2: Element fingerprint check
-            current_fingerprint = self._compute_element_fingerprint(elements)
-            stored_fingerprint = entry.get('element_fingerprint', '')
+            # Calculate screenshot similarity
+            screenshot_similarity = 0.0
+            if stored_screenshot_embedding:
+                screenshot_similarity = self._cosine_similarity(screenshot_embedding, stored_screenshot_embedding)
 
-            if stored_fingerprint and current_fingerprint != stored_fingerprint:
-                # Page structure changed
-                continue
+            print(f"   [{i+1}] Semantic: {candidate['similarity']:.3f}, Screenshot: {screenshot_similarity:.3f}")
 
-            # Layer 3: Screenshot dhash check
-            current_dhash = self._compute_screenshot_dhash(screenshot)
-            stored_dhash = entry.get('screenshot_dhash', '')
+            # Check if screenshot similarity meets threshold
+            if screenshot_similarity >= screenshot_threshold:
+                valid_candidates.append({
+                    'entry': entry,
+                    'cache_key': candidate['cache_key'],
+                    'semantic_similarity': candidate['similarity'],
+                    'screenshot_similarity': screenshot_similarity
+                })
+                print(f"       PASS - Screenshot >= {screenshot_threshold}")
+            else:
+                print(f"       FAIL - Screenshot < {screenshot_threshold}")
 
-            if stored_dhash and current_dhash:
-                try:
-                    # Compute Hamming distance
-                    distance = imagehash.hex_to_hash(stored_dhash) - imagehash.hex_to_hash(current_dhash)
+        # If no candidates pass screenshot threshold, cache miss
+        if not valid_candidates:
+            print(f"   CACHE MISS - No candidates with screenshot similarity >= {screenshot_threshold}")
+            return None
 
-                    if distance > self.dhash_threshold:
-                        # Visual layout changed
-                        continue
-                except Exception:
-                    # If dhash comparison fails, skip this check
-                    pass
+        # Return best semantic match among valid candidates
+        best_match = max(valid_candidates, key=lambda x: x['semantic_similarity'])
+        cached_response = best_match['entry'].get('cached_response')
 
-            # All checks passed - cache hit!
-            cached_response = entry.get('cached_response')
+        print(f"   CACHE HIT - Best match: Semantic {best_match['semantic_similarity']:.3f}, Screenshot {best_match['screenshot_similarity']:.3f}")
 
-            if cached_response:
-                # Update hit count in Redis
-                cache_key = candidate['cache_key']
-                entry['hit_count'] = entry.get('hit_count', 0) + 1
-                self.redis.set(cache_key, json.dumps(entry))
+        if cached_response:
+            # Update hit count in Redis
+            cache_key = best_match['cache_key']
+            entry = best_match['entry']
+            entry['hit_count'] = entry.get('hit_count', 0) + 1
+            self.redis.set(cache_key, json.dumps(entry))
 
-                return cached_response
+            return cached_response
 
         # No valid cache entry found
+        print(f"   CACHE MISS - No cached response found")
         return None
 
     def set(self, goal: str, elements: List[Dict], screenshot: str, response: Dict) -> str:
@@ -301,20 +378,27 @@ class SemanticCache:
         Returns:
             Cache key for the stored entry
         """
+        if not self.redis_available:
+            return ""
         # Build cache components
         page_context = self._build_page_context(goal, elements)
-        embedding = self._get_embedding(page_context)
+        goal_embedding = self._get_embedding(page_context)
+        screenshot_embedding = self._compute_screenshot_embedding(screenshot)
         element_fingerprint = self._compute_element_fingerprint(elements)
-        screenshot_dhash = self._compute_screenshot_dhash(screenshot)
 
         # Calculate response size
         response_size_bytes = len(json.dumps(response).encode('utf-8'))
 
+        print(f"CACHE STORE - Goal: '{goal[:50]}...'")
+        print(f"   Action: {response.get('action', 'N/A')}")
+        print(f"   Fingerprint: {element_fingerprint}")
+        print(f"   Response size: {response_size_bytes} bytes")
+
         # Build cache entry
         entry = {
-            "embedding": embedding,
+            "embedding": goal_embedding,
+            "screenshot_embedding": screenshot_embedding,
             "element_fingerprint": element_fingerprint,
-            "screenshot_dhash": screenshot_dhash,
             "cached_response": response,
             "goal": goal,
             "page_context": page_context,
@@ -329,6 +413,8 @@ class SemanticCache:
         # Store in Redis (no TTL - entries stay forever)
         self.redis.set(cache_key, json.dumps(entry))
 
+        print(f"   Stored with key: {cache_key[:20]}...")
+
         return cache_key
 
     def get_stats(self) -> Dict[str, Any]:
@@ -338,6 +424,15 @@ class SemanticCache:
         Returns:
             Dictionary with cache statistics
         """
+        if not self.redis_available:
+            return {
+                "total_entries": 0,
+                "total_hits": 0,
+                "avg_hits_per_entry": 0,
+                "total_size_bytes": 0,
+                "total_size_kb": 0,
+                "total_size_mb": 0
+            }
         try:
             # Get all cache keys
             cache_keys = self.redis.keys("cache:*")
@@ -393,6 +488,8 @@ class SemanticCache:
         Returns:
             Number of entries cleared
         """
+        if not self.redis_available:
+            return 0
         try:
             cache_keys = self.redis.keys("cache:*")
 

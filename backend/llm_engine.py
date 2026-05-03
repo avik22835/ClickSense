@@ -19,7 +19,6 @@ VALID_ACTIONS = {"CLICK", "TYPE", "SELECT", "PRESS_ENTER", "SCROLL_UP", "SCROLL_
 
 # Initialize cache service
 cache = SemanticCache()
-stats_db = init_stats_db("stats.db")
 
 BROWSER_ACTION_DECL = types.FunctionDeclaration(
     name="browser_action",
@@ -78,6 +77,9 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
     start_time = time.time()
     cache_lookup_start = time.time()
 
+    # Create database connection for this request
+    stats_db = init_stats_db("stats.db")
+
     # Convert elements to dict format for cache service
     elements_dict = [
         {
@@ -102,6 +104,7 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
     if cached:
         # Cache hit - return cached response
         response_time = (time.time() - start_time) * 1000
+        print(f"CACHE HIT - Goal: '{request.task[:50]}...' | Time: {response_time:.0f}ms (saved {cache_lookup_time:.0f}ms lookup)")
 
         # Log stats for cache hit
         log_request(
@@ -115,9 +118,11 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
             screenshot_size_kb=len(request.screenshot) * 0.75 / 1024
         )
 
+        stats_db.close()
         return ActionResponse(**cached)
 
     # Cache miss - run Gemini pipeline
+    print(f"CACHE MISS - Goal: '{request.task[:50]}...' | Running full AI pipeline...")
     client = genai.Client(api_key=api_key)
     img = _image_part(request.screenshot)
 
@@ -212,6 +217,7 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
             error="AI did not return valid action"
         )
 
+        stats_db.close()
         return ActionResponse(
             action="NONE",
             explanation="AI did not return a valid action. Please try again.",
@@ -298,6 +304,7 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
             error=f"NOOP: {noop_reason}"
         )
 
+        stats_db.close()
         return ActionResponse(
             action=action,
             element_index=element_index,
@@ -340,5 +347,8 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
         element_count=len(request.elements),
         screenshot_size_kb=len(request.screenshot) * 0.75 / 1024
     )
+
+    # Close database connection
+    stats_db.close()
 
     return ActionResponse(**response_dict)

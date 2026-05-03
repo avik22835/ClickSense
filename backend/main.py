@@ -25,6 +25,18 @@ def health():
     return {"status": "ok"}
 
 
+@app.post("/clear-cache")
+def clear_cache():
+    """Clear all cache entries"""
+    from cache_service import SemanticCache
+    cache = SemanticCache()
+    if cache.redis_available:
+        cleared = cache.clear()
+        return {"status": "success", "cleared_entries": cleared}
+    else:
+        return {"status": "error", "message": "Redis not available"}
+
+
 @app.get("/stats")
 def get_stats(time_range: str = "7d", include_details: bool = False):
     """
@@ -515,4 +527,8 @@ def get_action(request: ActionRequest):
     try:
         return run_pipeline(request, api_key)
     except Exception as e:
+        import traceback
+        print(f"ERROR in /api/action: {e}")
+        print(f"Full traceback:")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
