@@ -514,18 +514,8 @@ def _get_failed_tasks(cursor, limit=20):
 
 @app.post("/api/action", response_model=ActionResponse)
 def get_action(request: ActionRequest):
-    api_key = request.options.get("geminiKey")
-    if not api_key:
-        api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        raise HTTPException(
-            status_code=401,
-            detail="GEMINI_API_KEY not set. Add it to backend/.env as GEMINI_API_KEY=your_key_here"
-        )
-
     try:
-        return run_pipeline(request, api_key)
+        return run_pipeline(request)
     except Exception as e:
         import traceback
         print(f"ERROR in /api/action: {e}")

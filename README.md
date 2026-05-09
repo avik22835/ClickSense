@@ -90,6 +90,101 @@ background.js (runStep)
 
 ---
 
+## Semantic Caching
+
+Every backend request passes through a three-layer semantic cache backed by Redis before hitting the Gemini API. A cache hit skips both AI calls entirely and returns in milliseconds instead of 3–8 seconds.
+
+### How it works
+
+**Layer 1 — Semantic similarity (goal + page context)**
+The goal text and the top 10 element descriptions from the current page are combined into a single string and embedded using `all-MiniLM-L6-v2` (a local sentence-transformer model, no API call). This embedding is compared against all stored embeddings in Redis using cosine similarity. Only candidates above a 0.75 threshold move to the next layer.
+
+**Layer 2 — Visual page match (screenshot embedding)**
+The screenshot is encoded and its embedding is compared against the stored screenshot embedding for each candidate. A 0.95 threshold is required — this filters out cases where the goal text is similar but the actual page looks different (e.g. same task, different step).
+
+**What gets cached and what doesn't**
+Only `CLICK`, `TYPE`, `SELECT`, `PRESS_ENTER`, `HOVER`, and `TERMINATE` actions are stored in the cache. `SCROLL_UP` and `SCROLL_DOWN` are explicitly excluded — scroll actions are page-scroll-position-dependent and caching them causes replay bugs where the agent scrolls infinitely on pages that have already scrolled.
+
+### Cache storage
+Entries are stored in Redis with no TTL (they persist indefinitely). Each entry stores the goal embedding, screenshot embedding, element fingerprint, the cached response dict, hit count, and size in bytes. On startup, any old-format cache entries (missing screenshot embedding) are automatically purged.
+
+### Cache lifecycle per request
+```
+Incoming request
+  │
+  ├─ build page context (goal + top 10 elements)
+  ├─ compute embedding  →  query Redis for candidates (similarity ≥ 0.75)
+  │     ├─ no candidates  →  CACHE MISS → run full AI pipeline → store result
+  │     └─ candidates found
+  │           ├─ compute screenshot embedding
+  │           ├─ compare against each candidate (threshold ≥ 0.95)
+  │           │     ├─ none pass  →  CACHE MISS → run full AI pipeline → store result
+  │           │     └─ best match  →  CACHE HIT → return immediately
+```
+
+### Cache management endpoints
+
+```bash
+# Clear all cache entries
+POST http://localhost:8000/clear-cache
+
+# Response: { "status": "success", "cleared_entries": 42 }
+```
+
+---
+
+## Stats & Monitoring
+
+The `/stats` endpoint gives a full performance breakdown — cache hit rates, time savings, cost savings, action distribution, and task completion stats.
+
+### View stats in browser
+Just open this URL while the backend is running:
+```
+http://localhost:8000/stats
+```
+
+Or with a specific time range:
+```
+http://localhost:8000/stats?time_range=1d     # last 24 hours
+http://localhost:8000/stats?time_range=7d     # last 7 days (default)
+http://localhost:8000/stats?time_range=30d    # last 30 days
+http://localhost:8000/stats?time_range=all    # all time
+```
+
+With detailed breakdown (recent requests, top cache entries, failed tasks):
+```
+http://localhost:8000/stats?include_details=true
+```
+
+### What the stats response contains
+
+| Section | What it tells you |
+|---|---|
+| `overall` | Total requests, cache hit/miss counts, hit rate %, avg/min/max response time, error rate |
+| `time_savings` | Avg response time for hits vs misses, time saved per hit, total time saved across all hits, speedup factor |
+| `cost_savings` | Estimated token usage with and without cache, USD cost saved (based on Gemini 2.5 Flash pricing) |
+| `cache_health` | Total entries, how many have ever been hit, avg hits per entry, cache size in bytes/KB/MB |
+| `task_performance` | Total tasks, completion rate %, avg steps per task, avg rejections and noops per task |
+| `action_distribution` | Breakdown of CLICK / TYPE / SCROLL / etc. counts and percentages |
+| `top_goals` | The 10 most-requested goals with their individual cache hit rates |
+| `percentiles` | p50, p95, p99 response times |
+| `timing_breakdown` | For cache misses: avg time spent in planning call vs grounding call vs embedding vs cache lookup |
+| `hourly_request_rate` | Requests per hour for the last 24 hours |
+
+### Quick curl examples
+
+```bash
+# Overall stats
+curl http://localhost:8000/stats | python -m json.tool
+
+# Last 24 hours with details
+curl "http://localhost:8000/stats?time_range=1d&include_details=true" | python -m json.tool
+```
+
+Stats are persisted in a local SQLite database (`backend/stats.db`) and survive backend restarts.
+
+---
+
 ## Setup
 
 ### 1. Backend
@@ -101,10 +196,22 @@ pip install -r requirements.txt
 
 Create `backend/.env`:
 ```
-GEMINI_API_KEY=your_key_here
+GCP_PROJECT_ID=your-gcp-project-id
+GCP_LOCATION=us-central1
+REDIS_URL=redis://localhost:6379
 ```
 
-Start the server:
+Authenticate with GCP (Application Default Credentials — no service account key needed):
+```bash
+gcloud auth application-default login --scopes=https://www.googleapis.com/auth/cloud-platform,https://www.googleapis.com/auth/accounts.reauth
+```
+
+Start Redis (required for caching):
+```bash
+docker run -d -p 6379:6379 redis:alpine
+```
+
+Start the backend:
 ```bash
 uvicorn main:app --reload
 ```
@@ -123,13 +230,16 @@ uvicorn main:app --reload
 - Chrome Extension Manifest V3 — service worker, scripting, debugger, sidePanel APIs
 - Chrome DevTools Protocol (CDP) — full-page screenshots and trusted scroll events
 - FastAPI + Pydantic
-- Google Gemini 2.5 Flash (`google-genai` SDK)
+- Google Gemini 2.5 Flash via Vertex AI (`google-genai` SDK with `vertexai=True`)
+- Redis + `sentence-transformers` (`all-MiniLM-L6-v2`) for semantic caching
+- SQLite for request/task stats persistence
 - Plain JS on the extension side, no build step needed
 
 ---
 
 ## Known limitations
 
-- Needs the Python backend running locally — no hosted version
+- Needs the Python backend running locally — no hosted version yet
+- Needs Redis running locally for caching (backend works without it but caching is disabled)
 - CDP attaches a debugger to the tab, so you can't have DevTools open on the same tab at the same time
 - Flash model occasionally picks the wrong element on dense pages; Pro is more accurate but noticeably slower

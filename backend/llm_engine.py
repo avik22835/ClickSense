@@ -1,4 +1,5 @@
 import base64
+import os
 import time
 from google import genai
 from google.genai import types
@@ -73,7 +74,7 @@ def _image_part(data_url: str) -> types.Part:
     return types.Part(inline_data=types.Blob(mime_type=mime_type, data=image_bytes))
 
 
-def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
+def run_pipeline(request: ActionRequest) -> ActionResponse:
     start_time = time.time()
     cache_lookup_start = time.time()
 
@@ -123,7 +124,7 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
 
     # Cache miss - run Gemini pipeline
     print(f"CACHE MISS - Goal: '{request.task[:50]}...' | Running full AI pipeline...")
-    client = genai.Client(api_key=api_key)
+    client = genai.Client(vertexai=True, project=os.getenv('GCP_PROJECT_ID', 'project-aac37daa-9a5d-4a81-81b'), location=os.getenv('GCP_LOCATION', 'us-central1'))
     img = _image_part(request.screenshot)
 
     # ── Step 1: Planning (free-form text, no tool use) ────────────────────────
@@ -135,7 +136,7 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
 
     planning_response = client.models.generate_content(
         model=MODEL,
-        contents=[types.Content(parts=[img, types.Part(text=planning_prompt)])],
+        contents=[types.Content(role="user", parts=[img, types.Part(text=planning_prompt)])],
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             tools=[BROWSER_TOOL],
@@ -326,13 +327,14 @@ def run_pipeline(request: ActionRequest, api_key: str) -> ActionResponse:
         "severity": "SAFE"
     }
 
-    # Store in cache
-    cache.set(
-        goal=request.task,
-        elements=elements_dict,
-        screenshot=request.screenshot,
-        response=response_dict
-    )
+    # Don't cache scroll actions — they're page-state-dependent and cause infinite replay bugs
+    if action not in {"SCROLL_UP", "SCROLL_DOWN"}:
+        cache.set(
+            goal=request.task,
+            elements=elements_dict,
+            screenshot=request.screenshot,
+            response=response_dict
+        )
 
     # Log stats for successful request
     log_request(

@@ -8,10 +8,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_LOCATION=${GCP_LOCATION:-us-central1}
+      - GCP_MODEL=${GCP_MODEL:-gemini-2.5-flash-lite-preview-06-17}
       - REDIS_URL=redis://redis:6379
     volumes:
       - ./backend:/app
+      - ${APPDATA}/gcloud:/root/.config/gcloud:ro
     depends_on:
       - redis
     restart: unless-stopped
