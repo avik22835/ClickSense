@@ -327,14 +327,13 @@ def run_pipeline(request: ActionRequest) -> ActionResponse:
         "severity": "SAFE"
     }
 
-    # Don't cache scroll actions — they're page-state-dependent and cause infinite replay bugs
-    if action not in {"SCROLL_UP", "SCROLL_DOWN"}:
-        cache.set(
-            goal=request.task,
-            elements=elements_dict,
-            screenshot=request.screenshot,
-            response=response_dict
-        )
+    # Store in cache
+    cache.set(
+        goal=request.task,
+        elements=elements_dict,
+        screenshot=request.screenshot,
+        response=response_dict
+    )
 
     # Log stats for successful request
     log_request(
