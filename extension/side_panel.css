@@ -206,9 +206,36 @@
 }
 .instruction {
   font-size: 12px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: #1e1b4b;
-  white-space: pre-wrap;
+}
+.instruction p {
+  margin-bottom: 5px;
+}
+.instruction p:last-child {
+  margin-bottom: 0;
+}
+.instruction strong {
+  font-weight: 700;
+  color: #1e1b4b;
+}
+.instruction code {
+  font-family: 'Menlo', 'Consolas', monospace;
+  background: #ede9fe;
+  color: #5b21b6;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+.instruction ul {
+  margin: 4px 0 6px 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.instruction li {
+  line-height: 1.5;
 }
 .element-tag {
   font-size: 10px;

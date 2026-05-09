@@ -1,6 +1,31 @@
 // ClickSense side panel — port of side_panel.ts
 // Exact message type string values from messaging_defs.ts preserved.
 
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  const lines = html.split('\n');
+  const out = [];
+  let inList = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^[-•*] /.test(trimmed)) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + trimmed.replace(/^[-•*] /, '') + '</li>');
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      if (trimmed !== '') out.push('<p>' + trimmed + '</p>');
+    }
+  }
+  if (inList) out.push('</ul>');
+  return out.join('');
+}
+
 const PANEL_PORT = 'side-panel-2-agent-controller';
 const BACKEND_KEY = 'backendUrl';
 
@@ -127,16 +152,15 @@ function showStepCard(actionInfo) {
   if (isNoneAction) {
     stepBadge.textContent       = 'AI Response';
     stepActionType.textContent  = 'EXPLANATION';
-    // Show the concise explanation, not the full planning output (which is verbose AI reasoning)
-    stepInstruction.textContent = explanation || planningOutput;
+    stepInstruction.innerHTML   = renderMarkdown(explanation);
     stepElement.classList.add('hidden');
     doneButton.textContent = 'Got it, continue →';
     skipButton.classList.add('hidden');
   } else {
-    const guidance = (planningOutput || explanation) + (value ? `\n\nValue to enter: "${value}"` : '');
+    const text = explanation + (value ? `\n\n**Value to enter:** \`${value}\`` : '');
     stepBadge.textContent       = `Step ${stepNum + 1}`;
     stepActionType.textContent  = actionLabel(action);
-    stepInstruction.textContent = guidance;
+    stepInstruction.innerHTML   = renderMarkdown(text);
     if (elementDesc) {
       stepElement.textContent = elementDesc;
       stepElement.classList.remove('hidden');

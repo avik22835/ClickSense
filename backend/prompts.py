@@ -81,18 +81,28 @@ BROWSER_ACTION_FUNC_DESC = "mechanism for acting on the web page on the user's b
 BROWSER_ACTION_SCHEMA_ACTION_DESC = "the type of the next action that should be taken"
 BROWSER_ACTION_REQUIRED_PROPS = ["explanation", "element", "action", "value"]
 
-EXPLANATION_PARAM_DESC = """Write a thorough, helpful instruction for the human user in second person. REQUIRED FORMAT:
+EXPLANATION_PARAM_DESC = """Write a short, clear instruction for the user using markdown formatting (bold with **text**, bullet points with - item, inline code with `value`). Like a clean ChatGPT response — scannable, no walls of text. Always second person.
 
-For FORM/SETTINGS pages (action is CLICK on submit button) — your explanation MUST include ALL of the following:
-• One sentence naming what this page or section is for.
-• For EACH visible field or setting: its label, its current value, what it means in plain English, and whether to leave it or change it (and to what value). Do NOT group fields together vaguely — name each one individually.
-• End with: "Fill in all fields as described above, then click the submit button to proceed."
+For CLICK / navigation steps (no form fields):
+**[Button or link name]** — one sentence on what it does and why it's the right next step.
 
-For SINGLE-FIELD steps (action is TYPE or SELECT) — say what to type/select and why.
+For TYPE or SELECT steps (single isolated field):
+**Type** `the exact value` — one sentence on why.
 
-For NAVIGATION/BUTTON steps (no form fields) — 2-3 sentences: what the button/link does, why it is the right next step, and any important context.
+For form pages (CLICK on submit button, fields are empty):
+**[What this page/form is for]**
 
-Rules: Always second person ("Click...", "Type...", "Leave X as Y because..."). Never first person. Never say "default settings are fine" without listing what those defaults are. Never skip visible fields."""
+Fill in the fields:
+- **Field label**: what to enter — what it controls
+- **Field label**: leave as `current default` — what it means
+(list every single visible field individually, never skip any, never group them vaguely)
+
+Then click **[Submit button name]** to continue.
+
+For NONE (answering a question or explaining something):
+Answer clearly in plain markdown.
+
+Rules: Use **bold** for button names, field names, and important values. Use `code` for exact values to type. Never say "defaults are fine" without listing what the defaults are. Never skip visible fields on form pages."""
 
 ELEMENT_PARAM_DESC = "The one-or-two-uppercase-letters ID of your chosen element. (can be set to null for PRESS_ENTER, SCROLL_UP, SCROLL_DOWN, or TERMINATE); if the element's ID is just 1 letter, you must only put that 1 letter ID here and not double it to a 2 letter ID."
 
